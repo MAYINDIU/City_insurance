@@ -4,7 +4,6 @@ import 'package:http/http.dart' as http; // For making HTTP requests. Add 'http:
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw; // Use 'pw' for pdf widgets to avoid conflict with flutter widgets
 import 'package:path_provider/path_provider.dart'; // For temporary directory
-import 'package:open_filex/open_filex.dart'; // For opening the file
 import 'package:permission_handler/permission_handler.dart'; // For permissions
 import 'dart:io'; // Add this line
 
@@ -42,20 +41,20 @@ class FirecompleteScreen extends StatelessWidget {
 
               const SizedBox(height: 30),
               Center(
-                child: Column( // Use a Column to stack buttons
+                child: Column(
                   children: [
                     ElevatedButton.icon(
                       onPressed: () => _generateAndSavePdf(context), // Call the PDF generation function
                       icon: const Icon(Icons.picture_as_pdf),
                       label: const Text('Download PDF', style: TextStyle(fontSize: 16)),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.redAccent, // A distinct color for PDF
+                        backgroundColor: Colors.redAccent,
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 12),
                         textStyle: const TextStyle(fontSize: 16),
                       ),
                     ),
-                    const SizedBox(height: 15), // Spacing between buttons
+                    const SizedBox(height: 15),
                     ElevatedButton.icon(
                       onPressed: () {
                         Navigator.popUntil(context, (route) => route.isFirst);
@@ -96,7 +95,7 @@ class FirecompleteScreen extends StatelessWidget {
   }
 
   String _formatKeyForDisplay(String key) {
-    // ... (Your existing _formatKeyForDisplay logic here, as provided previously)
+    // ... (Your existing _formatKeyForDisplay logic here)
     switch (key) {
       case 'CLNAME': return 'Client Name';
       case 'CLADDRESS': return 'Client Address';
@@ -164,8 +163,7 @@ class FirecompleteScreen extends StatelessWidget {
     }
   }
 
-
-  // --- New PDF Generation Method ---
+  // --- Modified PDF Generation Method (removed open_filex parts) ---
   Future<void> _generateAndSavePdf(BuildContext context) async {
     // Request storage permission first (especially for Android)
     var status = await Permission.storage.request();
@@ -177,12 +175,6 @@ class FirecompleteScreen extends StatelessWidget {
     }
 
     final pdf = pw.Document();
-
-    // Load a font that supports a wider range of characters if needed
-    // For simplicity, we'll use a default font provided by pdf package.
-    // If you need specific fonts (e.g., for non-Latin characters), you'd load them like this:
-    // final fontData = await rootBundle.load("assets/fonts/OpenSans-Regular.ttf");
-    // final ttf = pw.Font.ttf(fontData);
 
     pdf.addPage(
       pw.Page(
@@ -202,7 +194,6 @@ class FirecompleteScreen extends StatelessWidget {
               ),
               pw.SizedBox(height: 10),
 
-              // Use a Table for structured data presentation in PDF
               pw.Table.fromTextArray(
                 headers: ['Field', 'Value'],
                 data: data.entries.map((entry) {
@@ -214,8 +205,8 @@ class FirecompleteScreen extends StatelessWidget {
                 cellAlignment: pw.Alignment.centerLeft,
                 cellPadding: const pw.EdgeInsets.all(6),
                 columnWidths: {
-                  0: const pw.FlexColumnWidth(2), // Field column wider
-                  1: const pw.FlexColumnWidth(3), // Value column even wider
+                  0: const pw.FlexColumnWidth(2),
+                  1: const pw.FlexColumnWidth(3),
                 },
               ),
               pw.SizedBox(height: 20),
@@ -237,16 +228,12 @@ class FirecompleteScreen extends StatelessWidget {
     // Write the PDF file
     await file.writeAsBytes(await pdf.save());
 
-    // Show a success message and offer to open the file
+    // --- REMOVED OPEN_FILEX RELATED CODE ---
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('PDF saved to ${file.path}'),
-        action: SnackBarAction(
-          label: 'Open',
-          onPressed: () {
-            OpenFilex.open(file.path);
-          },
-        ),
+        content: Text('PDF saved successfully to: ${file.path}'),
+        backgroundColor: Colors.green,
+        duration: const Duration(seconds: 4),
       ),
     );
 
@@ -327,7 +314,7 @@ class _FireInsuranceFormScreenState extends State<FireInsuranceFormScreen> {
 
   // --- Dropdown for Construction Type ---
   String? _constructionData;
-  final List<String> _constructionOptions = ['Brick', 'Concrete', 'Wood', 'Steel', 'Other'];
+  final List<String> _constructionOptions = ['1st Class', '2nd Class', '3rd Class'];
 
   // --- GlobalKey for Form Validation ---
   final _formKey = GlobalKey<FormState>();
