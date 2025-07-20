@@ -1,17 +1,20 @@
-import 'dart:convert'; // For encoding/decoding JSON
-import 'package:flutter/material.dart'; // For Flutter UI widgets
-import 'package:http/http.dart' as http; // For making HTTP requests. Add 'http: ^latest_version' to pubspec.yaml
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw; // Use 'pw' for pdf widgets to avoid conflict with flutter widgets
 import 'package:path_provider/path_provider.dart'; // For temporary directory
 import 'package:permission_handler/permission_handler.dart'; // For permissions
-import 'dart:io'; // Add this line
+import 'dart:io'; // For File operations
+import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart'; // New import for PDF viewer
 
-
+/// This screen is displayed after successful form submission.
+/// It shows the submitted data and a preview of the generated PDF.
 class FirecompleteScreen extends StatelessWidget {
   final Map<String, dynamic> data;
+  final String? pdfPath; // New parameter to receive the PDF file path
 
-  const FirecompleteScreen({Key? key, required this.data}) : super(key: key);
+  const FirecompleteScreen({Key? key, required this.data, this.pdfPath}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -20,65 +23,88 @@ class FirecompleteScreen extends StatelessWidget {
         title: const Text('Fire Policy Details'),
         backgroundColor: Colors.lightGreen,
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                '🎉 Data Submitted Successfully!',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.green),
-              ),
-              const SizedBox(height: 20),
-              const Text('Here are the submitted details:', style: TextStyle(fontSize: 16)),
-              const SizedBox(height: 10),
+      body: Column( // Changed SingleChildScrollView to Column to properly layout with Expanded
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(20.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '🎉 Data Submitted Successfully!',
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.green),
+                ),
+                const SizedBox(height: 20),
+                const Text('Here are the submitted details:', style: TextStyle(fontSize: 16)),
+                const SizedBox(height: 10),
 
-              ...data.entries.map((entry) {
-                String displayLabel = _formatKeyForDisplay(entry.key);
-                return _buildDetailRow(displayLabel, entry.value);
-              }).toList(),
+                // Only show details if PDF path is not available or if you still want to list them
+                // For now, if a PDF is being displayed below, we don't need to list all rows again.
+                if (pdfPath == null) // Only show individual rows if PDF isn't primary view
+                  ...data.entries.map((entry) {
+                    String displayLabel = _FireInsuranceFormScreenState._formatKeyForDisplayStatic(entry.key);
+                    return _buildDetailRow(displayLabel, entry.value);
+                  }).toList(),
 
-              const SizedBox(height: 30),
-              Center(
-                child: Column(
-                  children: [
-                    ElevatedButton.icon(
-                      onPressed: () => _generateAndSavePdf(context), // Call the PDF generation function
-                      icon: const Icon(Icons.picture_as_pdf),
-                      label: const Text('Download PDF', style: TextStyle(fontSize: 16)),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.redAccent,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 12),
-                        textStyle: const TextStyle(fontSize: 16),
+                const SizedBox(height: 10),
+                Center(
+                  child: Column(
+                    children: [
+                      if (pdfPath != null) // If PDF is shown below, indicate it
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 8.0),
+                          child: Text(
+                            'Scroll down to view PDF preview.',
+                            style: TextStyle(fontSize: 15, fontStyle: FontStyle.italic, color: Colors.blueGrey),
+                          ),
+                        ),
+                      ElevatedButton.icon(
+                        onPressed: () => _generateAndSavePdf(context), // Keep download button
+                        icon: const Icon(Icons.picture_as_pdf),
+                        label: const Text('Download PDF', style: TextStyle(fontSize: 16)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.redAccent,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 12),
+                          textStyle: const TextStyle(fontSize: 16),
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 15),
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        Navigator.popUntil(context, (route) => route.isFirst);
-                      },
-                      icon: const Icon(Icons.home),
-                      label: const Text('Go Back to Form'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blueAccent,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 12),
-                        textStyle: const TextStyle(fontSize: 16),
+                      const SizedBox(height: 15),
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.popUntil(context, (route) => route.isFirst);
+                        },
+                        icon: const Icon(Icons.home),
+                        label: const Text('Go Back to Form'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blueAccent,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 12),
+                          textStyle: const TextStyle(fontSize: 16),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // --- PDF Viewer Section ---
+          if (pdfPath != null)
+            Expanded( // Use Expanded to give SfPdfViewer available space
+              child: Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: SfPdfViewer.file(
+                  File(pdfPath!), // Provide the File to the viewer
                 ),
               ),
-            ],
-          ),
-        ),
+            ),
+        ],
       ),
     );
   }
 
-  // Helper widget and format method remain the same as before
+  // Helper widget for displaying individual data rows
   Widget _buildDetailRow(String label, dynamic value) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 5.0),
@@ -94,78 +120,8 @@ class FirecompleteScreen extends StatelessWidget {
     );
   }
 
-  String _formatKeyForDisplay(String key) {
-    // ... (Your existing _formatKeyForDisplay logic here)
-    switch (key) {
-      case 'CLNAME': return 'Client Name';
-      case 'CLADDRESS': return 'Client Address';
-      case 'TRADEOFPROF': return 'Trade/Profession';
-      case 'PARTNERNAME': return 'Partner/Bank Name';
-      case 'PERIODFROM': return 'Period From';
-      case 'PERIODTO': return 'Period To';
-      case 'CYCLON': return 'Cyclone Covered';
-      case 'RIOT': return 'Riot Covered';
-      case 'MALICIUS': return 'Malicious Damage Covered';
-      case 'EARTHQUEAKE': return 'Earthquake Covered';
-      case 'ELETRICAL': return 'Electrical Covered';
-      case 'FLOOD_STOCK': return 'Flood (Stock) Covered';
-      case 'EXPLOSION': return 'Explosion Covered';
-      case 'AIRCRAFT': return 'Aircraft Damage Covered';
-      case 'CYCLONEBM': return 'Cyclone (B/M) Covered';
-      case 'IMPACTDAMAGE': return 'Impact Damage Covered';
-      case 'LANDSLIDE': return 'Landslide Covered';
-      case 'CYCLNOESTOCK': return 'Cyclone (Stock) Covered';
-      case 'bursting_of_pipess': return 'Bursting of Pipes Covered';
-      case 'TSUNAMI': return 'Tsunami Covered';
-      case 'FIRETINGING': return 'Fire & Lightning Covered';
-      case 'DESCRIPTION1': return 'Description 1';
-      case 'AMOUNT1': return 'Amount 1';
-      case 'DESCRIPTION2': return 'Description 2';
-      case 'AMOUNT2': return 'Amount 2';
-      case 'DESCRIPTION3': return 'Description 3';
-      case 'AMOUNT3': return 'Amount 3';
-      case 'DESCRIPTION4': return 'Description 4';
-      case 'AMOUNT4': return 'Amount 4';
-      case 'DESCRIPTION5': return 'Description 5';
-      case 'AMOUNT5': return 'Amount 5';
-      case 'DESCRIPTION6': return 'Description 6';
-      case 'AMOUNT6': return 'Amount 6';
-      case 'DESCRIPTION7': return 'Description 7';
-      case 'AMOUNT7': return 'Amount 7';
-      case 'DESCRIPTION8': return 'Description 8';
-      case 'AMOUNT8': return 'Amount 8';
-      case 'NAMEOFBUILDING': return 'Name of Building';
-      case 'OWNEROFBUILDING': return 'Owner of Building';
-      case 'OCUPATIONOFADJ': return 'Occupation of Adjoining Building';
-      case 'PLOTNO': return 'Plot/Holding No.';
-      case 'STREET': return 'Street';
-      case 'TOWN': return 'Town/District';
-      case 'NUMBEROFSTORES': return 'Number of Stories';
-      case 'CONSTRUCTION': return 'Construction Type';
-      case 'OCCUPATOINOFBUILD': return 'Occupation of Building';
-      case 'DIAGRAMATTACHED': return 'Diagram Attached';
-      case 'NEARESTFIREBRIGADE': return 'Nearest Fire Brigade';
-      case 'BANKERNAME': return 'Banker Name';
-      case 'CARRIEDBUSS': return 'Business Carried On This Building';
-      case 'OTHERPOWER': return 'Power Used in The Building';
-      case 'ISLIGHTED': return 'How Building is Lighted';
-      case 'ASSISTANCECASE': return 'Assistance in Case of Fire';
-      case 'm_status': return 'Submission Status';
-      case 'from_apps': return 'Source (App)';
-      case 'INTEREST_INSURED': return 'Interest in Insured Property';
-      case 'email': return 'Email';
-      case 'mobile': return 'Mobile';
-      case 'FLD_BM': return 'Flood (Building/Machinery) Covered';
-      default:
-        String formatted = key.replaceAll('_', ' ').replaceAll('-', ' ');
-        return formatted.split(' ').map((word) =>
-            word.isNotEmpty ? word[0].toUpperCase() + word.substring(1).toLowerCase() : '').join(' ');
-    }
-  }
-
-  // --- Modified PDF Generation Method (removed open_filex parts) ---
+  // --- PDF Generation Method for saving (remains similar, but uses static formatter) ---
   Future<void> _generateAndSavePdf(BuildContext context) async {
-    // Request storage permission first (especially for Android)
     var status = await Permission.storage.request();
     if (!status.isGranted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -197,7 +153,7 @@ class FirecompleteScreen extends StatelessWidget {
               pw.Table.fromTextArray(
                 headers: ['Field', 'Value'],
                 data: data.entries.map((entry) {
-                  return [_formatKeyForDisplay(entry.key), entry.value?.toString() ?? 'N/A'];
+                  return [_FireInsuranceFormScreenState._formatKeyForDisplayStatic(entry.key), entry.value?.toString() ?? 'N/A'];
                 }).toList(),
                 border: pw.TableBorder.all(color: PdfColors.grey400),
                 headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
@@ -220,15 +176,14 @@ class FirecompleteScreen extends StatelessWidget {
       ),
     );
 
-    // Get the application's temporary directory
+    // Get the application's temporary directory for saving
     final output = await getTemporaryDirectory();
-    final fileName = 'fire_policy_details_${DateTime.now().millisecondsSinceEpoch}.pdf';
+    final fileName = 'fire_policy_details_download_${DateTime.now().millisecondsSinceEpoch}.pdf';
     final file = File('${output.path}/$fileName');
 
     // Write the PDF file
     await file.writeAsBytes(await pdf.save());
 
-    // --- REMOVED OPEN_FILEX RELATED CODE ---
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('PDF saved successfully to: ${file.path}'),
@@ -400,6 +355,147 @@ class _FireInsuranceFormScreenState extends State<FireInsuranceFormScreen> {
     }
   }
 
+  /// Static helper for formatting keys, so it can be used by both screens.
+  /// Ideally, this would be in a separate utility file.
+  static String _formatKeyForDisplayStatic(String key) {
+    switch (key) {
+      case 'CLNAME': return 'Client Name';
+      case 'CLADDRESS': return 'Client Address';
+      case 'TRADEOFPROF': return 'Trade/Profession';
+      case 'PARTNERNAME': return 'Partner/Bank Name';
+      case 'PERIODFROM': return 'Period From';
+      case 'PERIODTO': return 'Period To';
+      case 'CYCLON': return 'Cyclone Covered';
+      case 'RIOT': return 'Riot Covered';
+      case 'MALICIUS': return 'Malicious Damage Covered';
+      case 'EARTHQUEAKE': return 'Earthquake Covered';
+      case 'ELETRICAL': return 'Electrical Covered';
+      case 'FLOOD_STOCK': return 'Flood (Stock) Covered';
+      case 'EXPLOSION': return 'Explosion Covered';
+      case 'AIRCRAFT': return 'Aircraft Damage Covered';
+      case 'CYCLONEBM': return 'Cyclone (B/M) Covered';
+      case 'IMPACTDAMAGE': return 'Impact Damage Covered';
+      case 'LANDSLIDE': return 'Landslide Covered';
+      case 'CYCLNOESTOCK': return 'Cyclone (Stock) Covered';
+      case 'bursting_of_pipess': return 'Bursting of Pipes Covered';
+      case 'TSUNAMI': return 'Tsunami Covered';
+      case 'FIRETINGING': return 'Fire & Lightning Covered';
+      case 'DESCRIPTION1': return 'Description 1';
+      case 'AMOUNT1': return 'Amount 1';
+      case 'DESCRIPTION2': return 'Description 2';
+      case 'AMOUNT2': return 'Amount 2';
+      case 'DESCRIPTION3': return 'Description 3';
+      case 'AMOUNT3': return 'Amount 3';
+      case 'DESCRIPTION4': return 'Description 4';
+      case 'AMOUNT4': return 'Amount 4';
+      case 'DESCRIPTION5': return 'Description 5';
+      case 'AMOUNT5': return 'Amount 5';
+      case 'DESCRIPTION6': return 'Description 6';
+      case 'AMOUNT6': return 'Amount 6';
+      case 'DESCRIPTION7': return 'Description 7';
+      case 'AMOUNT7': return 'Amount 7';
+      case 'DESCRIPTION8': return 'Description 8';
+      case 'AMOUNT8': return 'Amount 8';
+      case 'NAMEOFBUILDING': return 'Name of Building';
+      case 'OWNEROFBUILDING': return 'Owner of Building';
+      case 'OCUPATIONOFADJ': return 'Occupation of Adjoining Building';
+      case 'PLOTNO': return 'Plot/Holding No.';
+      case 'STREET': return 'Street';
+      case 'TOWN': return 'Town/District';
+      case 'NUMBEROFSTORES': return 'Number of Stories';
+      case 'CONSTRUCTION': return 'Construction Type';
+      case 'OCCUPATOINOFBUILD': return 'Occupation of Building';
+      case 'DIAGRAMATTACHED': return 'Diagram Attached';
+      case 'NEARESTFIREBRIGADE': return 'Nearest Fire Brigade';
+      case 'BANKERNAME': return 'Banker Name';
+      case 'CARRIEDBUSS': return 'Business Carried On This Building';
+      case 'OTHERPOWER': return 'Power Used in The Building';
+      case 'ISLIGHTED': return 'How Building is Lighted';
+      case 'ASSISTANCECASE': return 'Assistance in Case of Fire';
+      case 'm_status': return 'Submission Status';
+      case 'from_apps': return 'Source (App)';
+      case 'INTEREST_INSURED': return 'Interest in Insured Property';
+      case 'email': return 'Email';
+      case 'mobile': return 'Mobile';
+      case 'FLD_BM': return 'Flood (Building/Machinery) Covered';
+      default:
+        String formatted = key.replaceAll('_', ' ').replaceAll('-', ' ');
+        return formatted.split(' ').map((word) =>
+            word.isNotEmpty ? word[0].toUpperCase() + word.substring(1).toLowerCase() : '').join(' ');
+    }
+  }
+
+  // --- New method to generate PDF and return its path ---
+  Future<String?> _generatePdfFile(Map<String, dynamic> formData) async {
+    // Request storage permission first (especially for Android)
+    var status = await Permission.storage.request();
+    if (!status.isGranted) {
+      _showSnackBar('Storage permission denied. Cannot generate PDF for viewing.', Colors.red);
+      return null;
+    }
+
+    final pdf = pw.Document();
+
+    pdf.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        build: (pw.Context context) {
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(
+                'Fire Insurance Policy Details',
+                style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold, color: PdfColors.green800),
+              ),
+              pw.SizedBox(height: 20),
+              pw.Text(
+                'Submitted Details:',
+                style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+              ),
+              pw.SizedBox(height: 10),
+
+              pw.Table.fromTextArray(
+                headers: ['Field', 'Value'],
+                data: formData.entries.map((entry) {
+                  // Use the static helper for consistent formatting
+                  String displayLabel = _formatKeyForDisplayStatic(entry.key);
+                  return [displayLabel, entry.value?.toString() ?? 'N/A'];
+                }).toList(),
+                border: pw.TableBorder.all(color: PdfColors.grey400),
+                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+                headerDecoration: const pw.BoxDecoration(color: PdfColors.grey700),
+                cellAlignment: pw.Alignment.centerLeft,
+                cellPadding: const pw.EdgeInsets.all(6),
+                columnWidths: {
+                  0: const pw.FlexColumnWidth(2),
+                  1: const pw.FlexColumnWidth(3),
+                },
+              ),
+              pw.SizedBox(height: 20),
+              pw.Text(
+                'Generated on: ${DateTime.now().toLocal().toIso8601String().split('T')[0]}',
+                style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    try {
+      final output = await getTemporaryDirectory();
+      final fileName = 'fire_policy_preview_${DateTime.now().millisecondsSinceEpoch}.pdf';
+      final file = File('${output.path}/$fileName');
+      await file.writeAsBytes(await pdf.save());
+      return file.path;
+    } catch (e) {
+      debugPrint('Error generating PDF for preview: $e');
+      _showSnackBar('Failed to generate PDF for preview.', Colors.red);
+      return null;
+    }
+  }
+
+
   /// The main function to collect data and send it to the API.
   Future<void> _submitFireData() async {
     // Validate all form fields before proceeding
@@ -409,76 +505,70 @@ class _FireInsuranceFormScreenState extends State<FireInsuranceFormScreen> {
     }
 
     // --- 1. Get dynamic data from the form fields ---
-    final String clname = _nameOfProposerController.text.trim();
-    final String claddress = _addressOfProposerController.text.trim();
-    final String bankAddress = _bankAddressController.text.trim();
-    final String tradeProfession = _tradeOfProfessionController.text.trim();
-    final String desc1 = _description1Controller.text.trim();
-    final String emails = _emailController.text.trim();
-    final String mobiles = _mobileController.text.trim();
-    final String desc2 = _description2Controller.text.trim();
-    final String desc3 = _description3Controller.text.trim();
-    final String desc4 = _description4Controller.text.trim();
-    final String desc5 = _description5Controller.text.trim();
-    final String desc6 = _description6Controller.text.trim();
-    final String desc7 = _description7Controller.text.trim();
-    final String desc8 = _description8Controller.text.trim();
-    final String amt1 = _amount1Controller.text.trim();
-    final String amt2 = _amount2Controller.text.trim();
-    final String amt3 = _amount3Controller.text.trim();
-    final String amt4 = _amount4Controller.text.trim();
-    final String amt5 = _amount5Controller.text.trim();
-    final String amt6 = _amount6Controller.text.trim();
-    final String amt7 = _amount7Controller.text.trim();
-    final String amt8 = _amount8Controller.text.trim();
-    final String nameBuilding = _nameOfBuildingController.text.trim();
-    final String ownerBuilding = _ownerOfBuildingController.text.trim();
-    final String occupationAdj = _occupationAdjoiningBuildingController.text.trim();
-    final String flotHolding = _flotHoldingNoController.text.trim();
-    final String streett = _streetController.text.trim();
-    final String townDistrict = _townDistrictController.text.trim();
-    final String nmbrStore = _numberOfStoreController.text.trim();
-    final String constructionn = _constructionData ?? ''; // Use selected value from dropdown
-    final String occupationBuilding = _occupationOfBuildingController.text.trim();
-    final String dgrm = _diagramController.text.trim();
-    final String bridge = _fireBridgeController.text.trim();
-    final String nameBank = _nameBankController.text.trim();
-    final String carried = _carriedOnThisBusinessController.text.trim();
-    final String power = _powerUsedInTheBuildingController.text.trim();
-    final String bLighted = _buildingLightedController.text.trim();
-    final String assistance = _whatAssistanceController.text.trim();
-    final String interestIn = _interestInsuredController.text.trim();
-
-    // Convert boolean flags to "Yes" or "" as per API expectation
-    final String cyclon = _isCyclonCovered ? "Yes" : "";
-    final String riot = _isRiotCovered ? "Yes" : "";
-    final String malicious = _isMaliciousCovered ? "Yes" : "";
-    final String earthquake = _isEarthquakeCovered ? "Yes" : "";
-    final String electrical = _isElectricalCovered ? "Yes" : "";
-    final String floodStock = _isFloodStockCovered ? "Yes" : "";
-    final String explosion = _isExplosionCovered ? "Yes" : "";
-    final String aircraft = _isAircraftCovered ? "Yes" : "";
-    final String cycloneBM = _isCycloneBNCovered ? "Yes" : "";
-    final String impactDamage = _isImpactDamageCovered ? "Yes" : "";
-    final String landslide = _isLandslideCovered ? "Yes" : "";
-    final String cycloneStock = _isCycloneStockCovered ? "Yes" : "";
-    final String burstingOfPipes = _isBurstingOfPipesCovered ? "Yes" : "";
-    final String tsunami = _isTsunamiCovered ? "Yes" : "";
-    final String fireTinging = _isFireTingingCovered ? "Yes" : "";
-    final String floodBM = _isFloodBMCovered ? "Yes" : "";
-
-    // Format dates to YYYY-MM-DD for the API
-    final String periodFrom = _periodFromDate != null
-        ? "${_periodFromDate!.year}-${_periodFromDate!.month.toString().padLeft(2, '0')}-${_periodFromDate!.day.toString().padLeft(2, '0')}"
-        : "";
-    final String periodTo = _periodToDate != null
-        ? "${_periodToDate!.year}-${_periodToDate!.month.toString().padLeft(2, '0')}-${_periodToDate!.day.toString().padLeft(2, '0')}"
-        : "";
+    final Map<String, dynamic> formDataToSend = {
+      "CLNAME": _nameOfProposerController.text.trim(),
+      "CLADDRESS": _addressOfProposerController.text.trim(),
+      "PARTNERNAME": _bankAddressController.text.trim(),
+      "TRADEOFPROF": _tradeOfProfessionController.text.trim(),
+      "PERIODFROM": _periodFromDate != null ? "${_periodFromDate!.year}-${_periodFromDate!.month.toString().padLeft(2, '0')}-${_periodFromDate!.day.toString().padLeft(2, '0')}" : "",
+      "PERIODTO": _periodToDate != null ? "${_periodToDate!.year}-${_periodToDate!.month.toString().padLeft(2, '0')}-${_periodToDate!.day.toString().padLeft(2, '0')}" : "",
+      "CYCLON": _isCyclonCovered ? "Yes" : "",
+      "RIOT": _isRiotCovered ? "Yes" : "",
+      "MALICIUS": _isMaliciousCovered ? "Yes" : "",
+      "EARTHQUEAKE": _isEarthquakeCovered ? "Yes" : "",
+      "ELETRICAL": _isElectricalCovered ? "Yes" : "",
+      "FLOOD_STOCK": _isFloodStockCovered ? "Yes" : "",
+      "EXPLOSION": _isExplosionCovered ? "Yes" : "",
+      "AIRCRAFT": _isAircraftCovered ? "Yes" : "",
+      "CYCLONEBM": _isCycloneBNCovered ? "Yes" : "",
+      "IMPACTDAMAGE": _isImpactDamageCovered ? "Yes" : "",
+      "LANDSLIDE": _isLandslideCovered ? "Yes" : "",
+      "CYCLNOESTOCK": _isCycloneStockCovered ? "Yes" : "",
+      "bursting_of_pipess": _isBurstingOfPipesCovered ? "Yes" : "",
+      "TSUNAMI": _isTsunamiCovered ? "Yes" : "",
+      "FIRETINGING": _isFireTingingCovered ? "Yes" : "",
+      "DESCRIPTION1": _description1Controller.text.trim(),
+      "AMOUNT1": _amount1Controller.text.trim(),
+      "DESCRIPTION2": _description2Controller.text.trim(),
+      "DESCRIPTION3": _description3Controller.text.trim(),
+      "AMOUNT2": _amount2Controller.text.trim(),
+      "AMOUNT3": _amount3Controller.text.trim(),
+      "AMOUNT4": _amount4Controller.text.trim(),
+      "DESCRIPTION4": _description4Controller.text.trim(),
+      "DESCRIPTION5": _description5Controller.text.trim(),
+      "DESCRIPTION6": _description6Controller.text.trim(),
+      "DESCRIPTION7": _description7Controller.text.trim(),
+      "AMOUNT5": _amount5Controller.text.trim(),
+      "AMOUNT6": _amount6Controller.text.trim(),
+      "AMOUNT7": _amount7Controller.text.trim(),
+      "NAMEOFBUILDING": _nameOfBuildingController.text.trim(),
+      "OWNEROFBUILDING": _ownerOfBuildingController.text.trim(),
+      "OCUPATIONOFADJ": _occupationAdjoiningBuildingController.text.trim(),
+      "PLOTNO": _flotHoldingNoController.text.trim(),
+      "STREET": _streetController.text.trim(),
+      "TOWN": _townDistrictController.text.trim(),
+      "NUMBEROFSTORES": _numberOfStoreController.text.trim(),
+      "CONSTRUCTION": _constructionData ?? '',
+      "OCCUPATOINOFBUILD": _occupationOfBuildingController.text.trim(),
+      "DIAGRAMATTACHED": "Yes",
+      "NEARESTFIREBRIGADE": _fireBridgeController.text.trim(),
+      "BANKERNAME": _nameBankController.text.trim(),
+      "CARRIEDBUSS": _carriedOnThisBusinessController.text.trim(),
+      "OTHERPOWER": _powerUsedInTheBuildingController.text.trim(),
+      "ISLIGHTED": _buildingLightedController.text.trim(),
+      "ASSISTANCECASE": _whatAssistanceController.text.trim(),
+      "m_status": "Active",
+      "from_apps": "apps",
+      "INTEREST_INSURED": _interestInsuredController.text.trim(),
+      "email": _emailController.text.trim(),
+      "mobile": _mobileController.text.trim(),
+      "FLD_BM": _isFloodBMCovered ? "Yes" : "",
+    };
 
     // --- 2. Show a loading indicator (Progress Dialog) ---
     showDialog(
       context: context,
-      barrierDismissible: false, // User must wait for dialog to be dismissed
+      barrierDismissible: false,
       builder: (context) => const Center(child: CircularProgressIndicator(color: Colors.redAccent)),
     );
 
@@ -486,68 +576,10 @@ class _FireInsuranceFormScreenState extends State<FireInsuranceFormScreen> {
     const String url = "https://cityinsurancedigital.com.bd/demo/api_apps/fire/fire_insert.php";
 
     try {
-      // --- 4. Prepare the POST request body as a Map<String, String> ---
+      // --- 4. Prepare and send the POST request body as a Map<String, String> ---
       final response = await http.post(
         Uri.parse(url),
-        body: {
-          "CLNAME": clname,
-          "CLADDRESS": claddress,
-          "PARTNERNAME": bankAddress,
-          "TRADEOFPROF": tradeProfession,
-          "PERIODFROM": periodFrom,
-          "PERIODTO": periodTo,
-          "CYCLON": cyclon,
-          "RIOT": riot,
-          "MALICIUS": malicious,
-          "EARTHQUEAKE": earthquake,
-          "ELETRICAL": electrical,
-          "FLOOD_STOCK": floodStock,
-          "EXPLOSION": explosion,
-          "AIRCRAFT": aircraft,
-          "CYCLONEBM": cycloneBM,
-          "IMPACTDAMAGE": impactDamage,
-          "LANDSLIDE": landslide,
-          "CYCLNOESTOCK": cycloneStock,
-          "bursting_of_pipess": burstingOfPipes, // Note the double 's' based on your Java code
-          "TSUNAMI": tsunami,
-          "FIRETINGING": fireTinging,
-          "DESCRIPTION1": desc1,
-          "AMOUNT1": amt1,
-          "DESCRIPTION2": desc2,
-          "DESCRIPTION3": desc3,
-          "AMOUNT2": amt2,
-          "AMOUNT3": amt3,
-          "AMOUNT4": amt4,
-          "DESCRIPTION4": desc4,
-          "DESCRIPTION5": desc5,
-          "DESCRIPTION6": desc6,
-          "DESCRIPTION7": desc7,
-          "AMOUNT5": amt5,
-          "AMOUNT6": amt6,
-          "AMOUNT7": amt7,
-          "NAMEOFBUILDING": nameBuilding,
-          "OWNEROFBUILDING": ownerBuilding,
-          "OCUPATIONOFADJ": occupationAdj,
-          "PLOTNO": flotHolding,
-          "STREET": streett,
-          "TOWN": townDistrict,
-          "NUMBEROFSTORES": nmbrStore,
-          "CONSTRUCTION": constructionn,
-          "OCCUPATOINOFBUILD": occupationBuilding,
-          "DIAGRAMATTACHED": "Yes", // Hardcoded as per your Java example
-          "NEARESTFIREBRIGADE": bridge,
-          "BANKERNAME": nameBank,
-          "CARRIEDBUSS": carried,
-          "OTHERPOWER": power,
-          "ISLIGHTED": bLighted,
-          "ASSISTANCECASE": assistance,
-          "m_status": "Active", // Hardcoded as per your Java example
-          "from_apps": "apps", // Hardcoded as per your Java example
-          "INTEREST_INSURED": interestIn,
-          "email": emails,
-          "mobile": mobiles,
-          "FLD_BM": floodBM,
-        },
+        body: formDataToSend, // Use the map directly
       );
 
       // --- 5. Dismiss the loading indicator ---
@@ -555,28 +587,31 @@ class _FireInsuranceFormScreenState extends State<FireInsuranceFormScreen> {
 
       // --- 6. Handle the API Response ---
       if (response.statusCode == 200) {
-        // Successfully received a response from the server
         final Map<String, dynamic> jsonResponse = json.decode(response.body);
         final String status = jsonResponse["status"];
 
         if (status == "success") {
-          // Data successfully saved on the server
           _showSnackBar("Application Submitted Successfully! ✅", Colors.green);
           final Map<String, dynamic> responseData = jsonResponse["data"];
-          // Navigate to the success screen, passing the received data
+
+          // --- Generate PDF before navigating ---
+          final String? generatedPdfPath = await _generatePdfFile(responseData);
+
+          // Navigate to the success screen, passing both API data and PDF path
           Navigator.of(context).push(
             MaterialPageRoute(
-              builder: (context) => FirecompleteScreen(data: responseData),
+              builder: (context) => FirecompleteScreen(
+                data: responseData,
+                pdfPath: generatedPdfPath, // Pass the PDF path here
+              ),
             ),
           );
         } else {
-          // Server returned a 'fail' status
           final String message = jsonResponse["message"] ?? "Failed to save data.";
           _showSnackBar("Submission Failed: $message ❌", Colors.red);
           debugPrint("API Error Message: $message");
         }
       } else {
-        // Server returned an HTTP error code (e.g., 404, 500)
         _showSnackBar("Server Error: ${response.statusCode} ⚠️", Colors.orange);
         debugPrint("HTTP Error: ${response.statusCode}, Body: ${response.body}");
       }
@@ -619,7 +654,7 @@ class _FireInsuranceFormScreenState extends State<FireInsuranceFormScreen> {
                 _buildSectionHeader('Proposer Details 🧑‍💼'),
                 _buildTextField(_nameOfProposerController, 'Name of Proposer', required: true),
                 _buildTextField(_addressOfProposerController, 'Address of Proposer', required: true),
-                _buildTextField(_bankAddressController, 'Bank Address', required: true),
+                _buildTextField(_bankAddressController, 'Partner/Bank Name', required: true),
                 _buildTextField(_tradeOfProfessionController, 'Trade/Profession', required: true),
                 _buildTextField(_emailController, 'Email', keyboardType: TextInputType.emailAddress, validator: (value) {
                   if (value != null && value.isNotEmpty && !value.contains('@')) {
