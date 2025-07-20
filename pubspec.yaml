@@ -46,12 +46,13 @@ dependencies:
   fluttertoast: ^8.2.4
   path_provider: ^2.1.3 # Add this line
   open_file: ^3.3.2 # Add this line
-  
+  connectivity_plus: ^6.0.1 # Add this line
+
 
 
 dev_dependencies:
   flutter_test:
-    sdk: flutter
+    sdk: flutter 
   flutter_lints: ^3.0.1
   flutter_launcher_icons: ^0.13.1
 
@@ -84,6 +85,7 @@ flutter:
     - assets/icons/
 
 
+
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
 
@@ -96,9 +98,9 @@ flutter:
   # list giving the asset and other descriptors for the font. For
   # example:
   # fonts:
-  #   - family: Schyler
+  #   - family: Roboto
   #     fonts:
-  #       - asset: fonts/Schyler-Regular.ttf
+  #       - asset: assets/fonts/Roboto-Regular.ttf
   #       - asset: fonts/Schyler-Italic.ttf
   #         style: italic
   #   - family: Trajan Pro

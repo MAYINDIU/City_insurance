@@ -1,12 +1,12 @@
+// lib/screens/personal_accident.dart
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'package:intl/intl.dart'; // For date formatting
-import 'package:pdf/pdf.dart'; // For PDF generation
-import 'package:pdf/widgets.dart' as pw; // For PDF widgets
-import 'package:path_provider/path_provider.dart'; // For getting app directories
-import 'package:open_file/open_file.dart'; // For opening the generated PDF
-import 'dart:io'; // For file operations
+import 'package:intl/intl.dart';
+import 'dart:io'; // For SocketException (network)
+import 'package:connectivity_plus/connectivity_plus.dart'; // Cross-platform network check
+
+import 'package:cityinsurance/screens/pdf_viewer_page.dart';
 
 // Model class for dropdowns and API responses
 class Model {
@@ -29,14 +29,10 @@ class PersonalAccidentPage extends StatefulWidget {
 
 class _PersonalAccidentPageState extends State<PersonalAccidentPage> {
   // --- Controllers for TextFields ---
-  final TextEditingController _insuredNamePaController =
-      TextEditingController();
-  final TextEditingController _insuredAddressPaController =
-      TextEditingController();
-  final TextEditingController _fathersNamePaController =
-      TextEditingController();
-  final TextEditingController _nomineeAddressPaController =
-      TextEditingController();
+  final TextEditingController _insuredNamePaController = TextEditingController();
+  final TextEditingController _insuredAddressPaController = TextEditingController();
+  final TextEditingController _fathersNamePaController = TextEditingController();
+  final TextEditingController _nomineeAddressPaController = TextEditingController();
   final TextEditingController _nidPaController = TextEditingController();
   final TextEditingController _sumInsuredPaController = TextEditingController();
   final TextEditingController _ratePaController = TextEditingController();
@@ -48,8 +44,7 @@ class _PersonalAccidentPageState extends State<PersonalAccidentPage> {
   final TextEditingController _stampPaController = TextEditingController();
   final TextEditingController _nomineeNidsController = TextEditingController();
   final TextEditingController _nomineeMblsController = TextEditingController();
-  final TextEditingController _nomineeEmailsController =
-      TextEditingController();
+  final TextEditingController _nomineeEmailsController = TextEditingController();
 
   // --- Date Variables ---
   DateTime? _startDate;
@@ -71,14 +66,14 @@ class _PersonalAccidentPageState extends State<PersonalAccidentPage> {
   Model? _selectedRelation;
 
   List<Model> _classList = [
-    Model("Select Class", ""), // Default/Hint item
+    Model("Select Class", ""), // Default/Hint item, populated by API
   ];
   Model? _selectedClass;
   String? _classNumber; // Corresponds to 'CODE'
   String? _className; // Corresponds to 'NAME'
 
   List<Model> _tableList = [
-    Model("Select Table", ""), // Default/Hint item
+    Model("Select Table", ""), // Default/Hint item, populated by API
   ];
   Model? _selectedTable;
   String? _tableCode; // Corresponds to 'CODE'
@@ -91,31 +86,32 @@ class _PersonalAccidentPageState extends State<PersonalAccidentPage> {
   int _grandTotal = 0;
 
   bool _isLoading = false; // For showing a loading indicator
-  String? _pdfFilePath; // To store the path of the generated PDF
 
   // Form key for validation
   final _formKey = GlobalKey<FormState>();
 
-  // Data received from the API for PDF generation
+  // This will temporarily hold API data before navigating
   Map<String, dynamic>? _apiDataForPdf;
 
   @override
   void initState() {
     super.initState();
     _selectedRelation = _relationList.first; // Initialize selected relation
-    _ratePaController.text = "0"; // Initialize rate text
+    // Initialize calculated text fields to "0"
+    _ratePaController.text = "0";
     _premiumPaController.text = "0";
     _vatPaController.text = "0";
     _stampPaController.text = "0";
     _totalPaController.text = "0";
 
+    // Fetch dropdown data on initialization
     _fetchClassList();
     _fetchTableList();
   }
 
   @override
   void dispose() {
-    // Dispose controllers to prevent memory leaks
+    // Dispose all TextEditingControllers to prevent memory leaks
     _insuredNamePaController.dispose();
     _insuredAddressPaController.dispose();
     _fathersNamePaController.dispose();
@@ -135,13 +131,18 @@ class _PersonalAccidentPageState extends State<PersonalAccidentPage> {
     super.dispose();
   }
 
-  // --- Network Check (Simplified for Dart) ---
+  // --- Network Check (Recommended for cross-platform) ---
   Future<bool> _isConnected() async {
-    // In a real Flutter app, use connectivity_plus package for robust check
-    // import 'package:connectivity_plus/connectivity_plus.dart';
-    // var connectivityResult = await (Connectivity().checkConnectivity());
-    // return connectivityResult != ConnectivityResult.none;
-    return true; // Assume connected for this example
+    final connectivityResult = await (Connectivity().checkConnectivity());
+    if (connectivityResult.contains(ConnectivityResult.mobile) ||
+        connectivityResult.contains(ConnectivityResult.wifi) ||
+        connectivityResult.contains(ConnectivityResult.ethernet) ||
+        connectivityResult.contains(ConnectivityResult.vpn)) {
+      return true; // Connected via mobile data, wifi, ethernet, or VPN
+    } else if (connectivityResult.contains(ConnectivityResult.none)) {
+      return false; // No internet connection
+    }
+    return false; // Fallback for other states, assuming no connection
   }
 
   // --- API Calls ---
@@ -149,9 +150,9 @@ class _PersonalAccidentPageState extends State<PersonalAccidentPage> {
     setState(() {
       _isLoading = true;
     });
-    final url = Uri.parse(
-      "https://cityinsurancedigital.com.bd/demo/api_apps/omp/classlist.php",
-    );
+    const urlString = "https://cityinsurancedigital.com.bd/demo/api_apps/omp/classlist.php";
+    final url = Uri.parse(urlString);
+
     try {
       final response = await http.get(url);
       if (response.statusCode == 200) {
@@ -164,20 +165,20 @@ class _PersonalAccidentPageState extends State<PersonalAccidentPage> {
             // Add a default "Select Class" option at the beginning
             _classList.insert(0, Model("Select Class", ""));
             _selectedClass = _classList.first;
-            if (_selectedClass != null) {
-              _classNumber = _selectedClass!.pType;
-              _className = _selectedClass!.name;
-              _calculateResult(); // Call to update rate
-            }
+            // Update _classNumber and _className if a default is set
+            _classNumber = _selectedClass?.pType;
+            _className = _selectedClass?.name;
+            _calculateResult(); // Recalculate rate based on initial selection
           });
         } else {
           _showToast("Failed to fetch class data: ${jsonResponse['message']}");
         }
       } else {
-        _showToast("Server error: ${response.statusCode}");
+        _showToast("Server error fetching classes: ${response.statusCode}");
       }
     } catch (e) {
-      _showToast("Network error: $e");
+      _showToast("Network error fetching classes: $e");
+      print("Error fetching class list: $e"); // For debugging
     } finally {
       setState(() {
         _isLoading = false;
@@ -189,9 +190,9 @@ class _PersonalAccidentPageState extends State<PersonalAccidentPage> {
     setState(() {
       _isLoading = true;
     });
-    final url = Uri.parse(
-      "https://cityinsurancedigital.com.bd/demo/api_apps/omp/tablelist.php",
-    );
+    const urlString = "https://cityinsurancedigital.com.bd/demo/api_apps/omp/tablelist.php";
+    final url = Uri.parse(urlString);
+
     try {
       final response = await http.get(url);
       if (response.statusCode == 200) {
@@ -204,20 +205,20 @@ class _PersonalAccidentPageState extends State<PersonalAccidentPage> {
             // Add a default "Select Table" option at the beginning
             _tableList.insert(0, Model("Select Table", ""));
             _selectedTable = _tableList.first;
-            if (_selectedTable != null) {
-              _tableCode = _selectedTable!.pType;
-              _tableName = _selectedTable!.name;
-              _calculateResult(); // Call to update rate
-            }
+            // Update _tableCode and _tableName if a default is set
+            _tableCode = _selectedTable?.pType;
+            _tableName = _selectedTable?.name;
+            _calculateResult(); // Recalculate rate based on initial selection
           });
         } else {
           _showToast("Failed to fetch table data: ${jsonResponse['message']}");
         }
       } else {
-        _showToast("Server error: ${response.statusCode}");
+        _showToast("Server error fetching tables: ${response.statusCode}");
       }
     } catch (e) {
-      _showToast("Network error: $e");
+      _showToast("Network error fetching tables: $e");
+      print("Error fetching table list: $e"); // For debugging
     } finally {
       setState(() {
         _isLoading = false;
@@ -227,7 +228,7 @@ class _PersonalAccidentPageState extends State<PersonalAccidentPage> {
 
   Future<void> _submitPa() async {
     if (!await _isConnected()) {
-      _showToast("No internet connection.");
+      _showToast("No internet connection. Please check your connection.");
       return;
     }
 
@@ -237,10 +238,8 @@ class _PersonalAccidentPageState extends State<PersonalAccidentPage> {
         _isLoading = true;
       });
 
-      // --- API Call: insert_personal_datas.php ---
-      final apiUrl = Uri.parse(
-        "https://cityinsurancedigital.com.bd/demo/api_apps/personal/insert_personal_datas.php",
-      );
+      const apiUrlString = "https://cityinsurancedigital.com.bd/demo/api_apps/personal/insert_personal_datas.php";
+      final apiUrl = Uri.parse(apiUrlString);
 
       // Prepare POST parameters as a Map for x-www-form-urlencoded
       final Map<String, String> params = {
@@ -272,15 +271,29 @@ class _PersonalAccidentPageState extends State<PersonalAccidentPage> {
 
         if (response.statusCode == 200) {
           final jsonResponse = json.decode(response.body);
-          if (jsonResponse['success']) {
-            _apiDataForPdf = jsonResponse['data']; // Store data for PDF
-            // Clear form fields after successful submission
-            _clearFormFields();
-            // Generate PDF report
-            _generatePdfReport(); // This will handle showing the alert and button
+
+          if (jsonResponse['success'] == true) {
+            _apiDataForPdf = jsonResponse['data']; // Assign data here
+
+            _showToast("Personal data saved successfully!");
+            _clearFormFields(); // Clear original form fields
+
+            // --- NAVIGATE TO PDF VIEWER PAGE ---
+            if (_apiDataForPdf != null) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => PdfViewerPage(
+                    apiData: _apiDataForPdf!, // Pass the data to the new page
+                  ),
+                ),
+              );
+            } else {
+              _showToast("Error: No data received for PDF generation.");
+            }
           } else {
             _showToast(
-              "Failed to save personal data: ${jsonResponse['message']}",
+              "Failed to save personal data: ${jsonResponse['message'] ?? 'Unknown error'}",
             );
           }
         } else {
@@ -289,21 +302,23 @@ class _PersonalAccidentPageState extends State<PersonalAccidentPage> {
           );
         }
       } catch (e) {
-        String errorMsg = "Error occurred";
+        String errorMsg = "An unexpected error occurred.";
         if (e is http.ClientException && e.message.contains("timed out")) {
-          errorMsg = "Request timeout";
+          errorMsg = "Request timed out. Please try again.";
+        } else if (e is SocketException) {
+          errorMsg = "No internet connection. Please check your network.";
         } else if (e is FormatException) {
-          errorMsg = "Invalid response from server";
+          errorMsg = "Invalid response from server. Data format error.";
         }
         _showToast(errorMsg);
-        print("API Error: $e"); // Log the error for debugging
+        print("API Error during submission: $e");
       } finally {
         setState(() {
           _isLoading = false;
         });
       }
     } else {
-      _showToast("Please fill in all required fields correctly.");
+      _showToast("Please correct the errors in the form.");
     }
   }
 
@@ -312,41 +327,49 @@ class _PersonalAccidentPageState extends State<PersonalAccidentPage> {
     final sumValueText = _sumInsuredPaController.text;
     final rateText = _ratePaController.text;
 
-    if (sumValueText.isEmpty || rateText.isEmpty) {
-      _showToast("Please enter Sum Insured and ensure Rate is set.");
+    // Reset all calculated fields if inputs are empty or invalid
+    if (sumValueText.isEmpty ||
+        rateText.isEmpty ||
+        double.tryParse(sumValueText) == null ||
+        double.tryParse(sumValueText)! <= 0) {
+      _premiumPaController.text = "0";
+      _vatPaController.text = "0";
+      _stampPaController.text = "0";
+      _totalPaController.text = "0";
+      _prum = 0;
+      _vatt = 0;
+      _stmpp = 0;
+      _grandTotal = 0;
       return;
     }
 
-    double sumValue = double.tryParse(sumValueText) ?? 0.0;
-    double rate = double.tryParse(rateText) ?? 0.0;
-
-    if (sumValue <= 0) {
-      _showToast("Sum Insured must be greater than zero");
-      return;
-    }
-    if (rate <= 0) {
-      _showToast(
-        "Rate must be greater than zero. Please select Class and Table.",
-      );
-      return;
-    }
+    double sumValue = double.parse(sumValueText);
+    double rate = double.parse(rateText);
 
     setState(() {
+      // Calculate Premium: (Sum Insured / 10000) * Rate
       _prum = (sumValue / 10000 * rate).round();
       _premiumPaController.text = NumberFormat('#,##0').format(_prum);
 
+      // Calculate VAT: Premium * 15% (rounded up)
       _vatt = (_prum * 0.15).ceil();
       _vatPaController.text = NumberFormat('#,##0').format(_vatt);
 
+      // Calculate Stamp Duty:
       _stmpp = 0.0;
       if (sumValue >= 25000) {
-        _stmpp = 20.0;
+        _stmpp = 20.0; // Base stamp for 25000
         double additionalAmount = sumValue - 25000;
-        int additionalUnits = (additionalAmount / 5000).floor();
+        // Add 20 for every additional 5000 or part thereof (use ceil for partials)
+        int additionalUnits = (additionalAmount / 5000).ceil();
         _stmpp += additionalUnits * 20;
+      } else if (sumValue > 0 && sumValue < 25000) {
+        // Example: assuming a fixed stamp for smaller sums
+        _stmpp = 10.0; // Adjust this as per your business logic
       }
       _stampPaController.text = NumberFormat('#,##0').format(_stmpp.round());
 
+      // Calculate Grand Total
       _grandTotal = (_prum + _vatt + _stmpp).round();
       _totalPaController.text = NumberFormat('#,##0').format(_grandTotal);
     });
@@ -354,6 +377,7 @@ class _PersonalAccidentPageState extends State<PersonalAccidentPage> {
 
   void _calculateResult() {
     setState(() {
+      // If no valid class or table is selected, reset rate and other fields
       if (_selectedClass == null ||
           _selectedTable == null ||
           _selectedClass?.pType == "" ||
@@ -371,6 +395,7 @@ class _PersonalAccidentPageState extends State<PersonalAccidentPage> {
       }
 
       String? newRate;
+      // Determine rate based on selected class and table
       if (_classNumber == "Class-1") {
         if (_tableCode == "A") {
           newRate = "30";
@@ -401,8 +426,17 @@ class _PersonalAccidentPageState extends State<PersonalAccidentPage> {
         _ratePaController.text = newRate;
         _calculatePremium(); // Recalculate premium after rate changes
       } else {
+        // If no matching rate is found, reset rate and calculated fields
         _ratePaController.text = "0";
-        _showToast("Invalid Class/Table selection for rate.");
+        _premiumPaController.text = "0";
+        _vatPaController.text = "0";
+        _stampPaController.text = "0";
+        _totalPaController.text = "0";
+        _prum = 0;
+        _vatt = 0;
+        _stmpp = 0;
+        _grandTotal = 0;
+        _showToast("No rate found for the selected Class/Table combination.");
       }
     });
   }
@@ -411,16 +445,18 @@ class _PersonalAccidentPageState extends State<PersonalAccidentPage> {
   Future<void> _selectDate(BuildContext context, bool isStartDate) async {
     final DateTime? picked = await showDatePicker(
       context: context,
-      initialDate: DateTime.now(),
-      firstDate: DateTime(1900), // A more reasonable first date
+      initialDate: isStartDate
+          ? (_startDate ?? DateTime.now())
+          : (_endDate ?? DateTime.now()),
+      firstDate: DateTime(1900),
       lastDate: DateTime(2101),
       builder: (context, child) {
         return Theme(
           data: ThemeData.light().copyWith(
             primaryColor: Colors.blueAccent, // Header background color
-            colorScheme: ColorScheme.light(
-              primary: Colors.blueAccent,
-            ), // Selected date color
+            colorScheme: const ColorScheme.light(
+              primary: Colors.blueAccent, // Selected date color
+            ),
             buttonTheme: const ButtonThemeData(
               textTheme: ButtonTextTheme.primary,
             ),
@@ -446,7 +482,6 @@ class _PersonalAccidentPageState extends State<PersonalAccidentPage> {
   // --- Toast Message Helper ---
   void _showToast(String message) {
     if (mounted) {
-      // Ensure widget is still mounted before showing SnackBar
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(message),
@@ -479,6 +514,7 @@ class _PersonalAccidentPageState extends State<PersonalAccidentPage> {
       _startDatePaString = null;
       _endDatePaString = null;
       _selectedRelation = _relationList.first;
+      // Re-initialize class and table to their "Select" options
       _selectedClass = _classList.isNotEmpty ? _classList.first : null;
       _selectedTable = _tableList.isNotEmpty ? _tableList.first : null;
       _classNumber = _selectedClass?.pType;
@@ -493,218 +529,105 @@ class _PersonalAccidentPageState extends State<PersonalAccidentPage> {
       _vatPaController.text = "0";
       _stampPaController.text = "0";
       _totalPaController.text = "0";
-      _pdfFilePath = null; // Clear PDF path when form is cleared
+      // No need to clear _apiDataForPdf or _pdfFilePath here anymore
     });
     // This will trigger rate calculation based on reset dropdowns
     _calculateResult();
   }
 
-  // --- PDF Generation Logic ---
-  Future<void> _generatePdfReport() async {
-    if (_apiDataForPdf == null) {
-      _showToast("No data available to generate report.");
-      return;
-    }
-
-    setState(() {
-      _isLoading = true;
-    });
-
-    final pdf = pw.Document();
-
-    try {
-      pdf.addPage(
-        pw.MultiPage(
-          pageFormat: PdfPageFormat.a4,
-          header: (pw.Context context) {
-            return pw.Container(
-              alignment: pw.Alignment.center,
-              margin: const pw.EdgeInsets.only(bottom: 10.0),
-              padding: const pw.EdgeInsets.only(bottom: 5.0),
-              decoration: const pw.BoxDecoration(
-                border: pw.Border(
-                  bottom: pw.BorderSide(width: 0.5, color: PdfColors.grey),
-                ),
-              ),
-              child: pw.Text(
-                'Personal Accident Policy Report',
-                style: pw.Theme.of(context).defaultTextStyle.copyWith(
-                  color: PdfColors.black,
-                  fontWeight: pw.FontWeight.bold,
-                  fontSize: 16,
-                ),
-              ),
-            );
-          },
-          build: (pw.Context context) {
-            return [
-              pw.SizedBox(height: 20),
-              pw.Text(
-                'Policy Details',
-                style: pw.TextStyle(
-                  fontSize: 18,
-                  fontWeight: pw.FontWeight.bold,
-                ),
-              ),
-              pw.Divider(),
-              _buildPdfDetailRow('Policy ID:', _apiDataForPdf!['id'] ?? 'N/A'),
-              _buildPdfDetailRow(
-                'Insured Name:',
-                _apiDataForPdf!['name'] ?? 'N/A',
-              ),
-              _buildPdfDetailRow(
-                'Insured Address:',
-                _apiDataForPdf!['address'] ?? 'N/A',
-              ),
-              _buildPdfDetailRow(
-                'Sum Insured:',
-                _apiDataForPdf!['amount'] ?? 'N/A',
-              ),
-              _buildPdfDetailRow(
-                'Premium:',
-                _apiDataForPdf!['premium'] ?? 'N/A',
-              ),
-              _buildPdfDetailRow('VAT:', _apiDataForPdf!['vat'] ?? 'N/A'),
-              _buildPdfDetailRow('Stamp:', _apiDataForPdf!['stamp'] ?? 'N/A'),
-              _buildPdfDetailRow(
-                'Total Payable:',
-                _apiDataForPdf!['grand_total'] ?? 'N/A',
-              ),
-              _buildPdfDetailRow('Rate:', _apiDataForPdf!['rate'] ?? 'N/A'),
-              _buildPdfDetailRow(
-                'Period From:',
-                _apiDataForPdf!['period_from'] ?? 'N/A',
-              ),
-              _buildPdfDetailRow(
-                'Period To:',
-                _apiDataForPdf!['period_to'] ?? 'N/A',
-              ),
-              _buildPdfDetailRow('Class:', _apiDataForPdf!['Class'] ?? 'N/A'),
-              _buildPdfDetailRow('Table:', _apiDataForPdf!['Tables'] ?? 'N/A'),
-
-              pw.SizedBox(height: 20),
-              pw.Text(
-                'Contact Information',
-                style: pw.TextStyle(
-                  fontSize: 18,
-                  fontWeight: pw.FontWeight.bold,
-                ),
-              ),
-              pw.Divider(),
-              _buildPdfDetailRow('Mobile:', _apiDataForPdf!['mobile'] ?? 'N/A'),
-              _buildPdfDetailRow('Email:', _apiDataForPdf!['email'] ?? 'N/A'),
-              _buildPdfDetailRow(
-                'Father\'s Name:',
-                _apiDataForPdf!['fathers_name'] ?? 'N/A',
-              ),
-              _buildPdfDetailRow('NID:', _apiDataForPdf!['nid'] ?? 'N/A'),
-
-              pw.SizedBox(height: 20),
-              pw.Text(
-                'Nominee Details',
-                style: pw.TextStyle(
-                  fontSize: 18,
-                  fontWeight: pw.FontWeight.bold,
-                ),
-              ),
-              pw.Divider(),
-              _buildPdfDetailRow(
-                'Nominee Name & Address:',
-                _apiDataForPdf!['nominee'] ?? 'N/A',
-              ),
-              _buildPdfDetailRow(
-                'Nominee Relation:',
-                _apiDataForPdf!['relation'] ?? 'N/A',
-              ),
-              _buildPdfDetailRow(
-                'Nominee NID:',
-                _apiDataForPdf!['nominee_nid'] ?? 'N/A',
-              ),
-              _buildPdfDetailRow(
-                'Nominee Mobile:',
-                _apiDataForPdf!['nominee_mbl'] ?? 'N/A',
-              ),
-              _buildPdfDetailRow(
-                'Nominee Email:',
-                _apiDataForPdf!['nominee_email'] ?? 'N/A',
-              ),
-            ];
-          },
-        ),
-      );
-
-      final output = await getTemporaryDirectory();
-      final file = File('${output.path}/personal_accident_report.pdf');
-      await file.writeAsBytes(await pdf.save());
-
-      setState(() {
-        _pdfFilePath = file.path; // Store the PDF path
-      });
-
-      // Show alert dialog
-      if (mounted) {
-        showDialog(
-          context: context,
-          builder: (BuildContext context) {
-            return AlertDialog(
-              title: const Text('PDF Generated!'),
-              content: const Text(
-                'The PDF report has been successfully saved.',
-              ),
-              actions: <Widget>[
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(context).pop(); // Close the dialog
-                    _openPdf(); // Open the PDF
-                  },
-                  child: const Text('View PDF'),
-                ),
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(context).pop(); // Close the dialog
-                  },
-                  child: const Text('OK'),
-                ),
-              ],
-            );
-          },
-        );
-      }
-    } catch (e) {
-      _showToast("Error generating PDF: $e");
-      print("PDF Generation Error: $e"); // Log the error
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
-    }
-  }
-
-  // Function to open the PDF
-  void _openPdf() {
-    if (_pdfFilePath != null) {
-      OpenFile.open(_pdfFilePath);
-    } else {
-      _showToast("PDF file path is not available.");
-    }
-  }
-
-  // Helper widget for building rows in the PDF
-  pw.Widget _buildPdfDetailRow(String label, String value) {
-    return pw.Padding(
-      padding: const pw.EdgeInsets.symmetric(vertical: 4),
-      child: pw.Row(
-        crossAxisAlignment: pw.CrossAxisAlignment.start,
-        children: [
-          pw.SizedBox(
-            width: 150,
-            child: pw.Text(
-              label,
-              style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-            ),
+  // Helper method for building text input fields
+  Widget _buildTextField(
+    TextEditingController controller,
+    String labelText, {
+    TextInputType keyboardType = TextInputType.text,
+    bool readOnly = false,
+    VoidCallback? onTap,
+    String? Function(String?)? validator,
+    bool isRequired = false,
+    void Function(String)? onChanged,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: TextFormField(
+        controller: controller,
+        keyboardType: keyboardType,
+        readOnly: readOnly,
+        onTap: onTap,
+        decoration: InputDecoration(
+          labelText: isRequired ? '$labelText *' : labelText,
+          border: const OutlineInputBorder(),
+          filled: true,
+          fillColor: Colors.white,
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(color: Colors.grey.shade300, width: 1),
           ),
-          pw.Expanded(child: pw.Text(value)),
-        ],
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: Colors.blueAccent, width: 2),
+          ),
+          errorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: Colors.red, width: 1),
+          ),
+          focusedErrorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: Colors.red, width: 2),
+          ),
+        ),
+        validator: (value) {
+          if (isRequired && (value == null || value.isEmpty)) {
+            return 'Please enter $labelText';
+          }
+          return validator?.call(value);
+        },
+        onChanged: onChanged,
+      ),
+    );
+  }
+
+  // Helper method for building dropdown fields
+  Widget _buildDropdownField<T>(
+    String labelText,
+    T? selectedValue,
+    List<T> items,
+    ValueChanged<T?> onChanged,
+    String? Function(T?)? validator,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: DropdownButtonFormField<T>(
+        value: selectedValue,
+        decoration: InputDecoration(
+          labelText: '$labelText *',
+          border: const OutlineInputBorder(),
+          filled: true,
+          fillColor: Colors.white,
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(color: Colors.grey.shade300, width: 1),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: Colors.blueAccent, width: 2),
+          ),
+          errorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: Colors.red, width: 1),
+          ),
+          focusedErrorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: Colors.red, width: 2),
+          ),
+        ),
+        items: items.map((item) {
+          return DropdownMenuItem<T>(
+            value: item,
+            child: Text(item is Model ? item.name : item.toString()),
+          );
+        }).toList(),
+        onChanged: onChanged,
+        validator: validator,
       ),
     );
   }
@@ -771,8 +694,9 @@ class _PersonalAccidentPageState extends State<PersonalAccidentPage> {
                               if (value == null || value.isEmpty) {
                                 return 'Please enter mobile number';
                               }
-                              if (value.length < 10 || value.length > 15) {
-                                return 'Enter a valid mobile number';
+                              // Basic check for common mobile number lengths
+                              if (value.length < 6 || value.length > 15) {
+                                return 'Enter a valid mobile number (e.g., 10-15 digits)';
                               }
                               return null;
                             },
@@ -786,8 +710,9 @@ class _PersonalAccidentPageState extends State<PersonalAccidentPage> {
                               if (value == null || value.isEmpty) {
                                 return 'Please enter email address';
                               }
-                              if (!value.contains('@') ||
-                                  !value.contains('.')) {
+                              // A simple regex for email validation
+                              if (!RegExp(r'^[^@]+@[^@]+\.[^@]+')
+                                  .hasMatch(value)) {
                                 return 'Enter a valid email address';
                               }
                               return null;
@@ -820,9 +745,26 @@ class _PersonalAccidentPageState extends State<PersonalAccidentPage> {
                             style: Theme.of(context).textTheme.titleLarge,
                           ),
                           const Divider(),
+                          _buildDropdownField<Model>(
+                            "Relation",
+                            _selectedRelation,
+                            _relationList,
+                            (newValue) {
+                              setState(() {
+                                _selectedRelation = newValue;
+                              });
+                            },
+                            (value) {
+                              if (value == null || value.pType == "") {
+                                return 'Please select relation';
+                              }
+                              return null;
+                            },
+                          ),
                           _buildTextField(
                             _nomineeAddressPaController,
-                            "Nominee Beneficiary Name & Address",
+                            "Nominee Name & Address",
+                            isRequired: true,
                           ),
                           _buildTextField(
                             _nomineeNidsController,
@@ -838,19 +780,6 @@ class _PersonalAccidentPageState extends State<PersonalAccidentPage> {
                             _nomineeEmailsController,
                             "Nominee Email",
                             keyboardType: TextInputType.emailAddress,
-                          ),
-                          _buildDropdownField<Model>(
-                            "Relation",
-                            _selectedRelation,
-                            _relationList,
-                            (Model? newValue) {
-                              setState(() {
-                                _selectedRelation = newValue;
-                              });
-                            },
-                            (value) => value == _relationList.first
-                                ? 'Please select a relation'
-                                : null,
                           ),
                         ],
                       ),
@@ -878,323 +807,185 @@ class _PersonalAccidentPageState extends State<PersonalAccidentPage> {
                             "Class",
                             _selectedClass,
                             _classList,
-                            (Model? newValue) {
+                            (newValue) {
                               setState(() {
                                 _selectedClass = newValue;
                                 _classNumber = newValue?.pType;
                                 _className = newValue?.name;
-                                _calculateResult(); // Recalculate rate and premium
+                                _calculateResult(); // Recalculate based on new class
                               });
                             },
-                            (value) => value == null || value.pType.isEmpty
-                                ? 'Please select a class'
-                                : null,
+                            (value) {
+                              if (value == null || value.pType == "") {
+                                return 'Please select class';
+                              }
+                              return null;
+                            },
                           ),
                           _buildDropdownField<Model>(
                             "Table",
                             _selectedTable,
                             _tableList,
-                            (Model? newValue) {
+                            (newValue) {
                               setState(() {
                                 _selectedTable = newValue;
                                 _tableCode = newValue?.pType;
                                 _tableName = newValue?.name;
-                                _calculateResult(); // Recalculate rate and premium
+                                _calculateResult(); // Recalculate based on new table
                               });
                             },
-                            (value) => value == null || value.pType.isEmpty
-                                ? 'Please select a table'
-                                : null,
-                          ),
-                          _buildDateField(
-                            "Start Date",
-                            _startDatePaString,
-                            () => _selectDate(context, true),
-                            isRequired: true,
-                          ),
-                          _buildDateField(
-                            "End Date",
-                            _endDatePaString,
-                            () => _selectDate(context, false),
-                            isRequired: true,
+                            (value) {
+                              if (value == null || value.pType == "") {
+                                return 'Please select table';
+                              }
+                              return null;
+                            },
                           ),
                           _buildTextField(
                             _sumInsuredPaController,
                             "Sum Insured",
                             keyboardType: TextInputType.number,
                             isRequired: true,
+                            onChanged: (value) =>
+                                _calculatePremium(), // Recalculate on sum insured change
                             validator: (value) {
                               if (value == null || value.isEmpty) {
-                                return 'Please enter sum insured';
+                                return 'Please enter Sum Insured';
                               }
                               if (double.tryParse(value) == null ||
-                                  double.parse(value) <= 0) {
-                                return 'Enter a valid positive number';
+                                  double.tryParse(value)! <= 0) {
+                                return 'Enter a valid positive amount';
                               }
                               return null;
                             },
-                            onChanged: (value) {
-                              _calculatePremium(); // Recalculate on sum insured change
-                            },
                           ),
-                          _buildReadOnlyTextField(_ratePaController, "Rate"),
-                          _buildReadOnlyTextField(
+                          _buildTextField(
+                            _ratePaController,
+                            "Rate",
+                            readOnly: true,
+                            keyboardType: TextInputType.number,
+                          ),
+                          _buildTextField(
                             _premiumPaController,
                             "Premium",
+                            readOnly: true,
+                            keyboardType: TextInputType.number,
                           ),
-                          _buildReadOnlyTextField(_vatPaController, "VAT"),
-                          _buildReadOnlyTextField(_stampPaController, "Stamp"),
-                          _buildReadOnlyTextField(_totalPaController, "Total"),
+                          _buildTextField(
+                            _vatPaController,
+                            "VAT",
+                            readOnly: true,
+                            keyboardType: TextInputType.number,
+                          ),
+                          _buildTextField(
+                            _stampPaController,
+                            "Stamp",
+                            readOnly: true,
+                            keyboardType: TextInputType.number,
+                          ),
+                          _buildTextField(
+                            _totalPaController,
+                            "Total Payable",
+                            readOnly: true,
+                            keyboardType: TextInputType.number,
+                          ),
+                          _buildTextField(
+                            TextEditingController(text: _startDatePaString),
+                            "Period From",
+                            readOnly: true,
+                            isRequired: true,
+                            onTap: () => _selectDate(context, true),
+                            validator: (value) {
+                              if (_startDatePaString == null ||
+                                  _startDatePaString!.isEmpty) {
+                                return 'Please select start date';
+                              }
+                              return null;
+                            },
+                          ),
+                          _buildTextField(
+                            TextEditingController(text: _endDatePaString),
+                            "Period To",
+                            readOnly: true,
+                            isRequired: true,
+                            onTap: () => _selectDate(context, false),
+                            validator: (value) {
+                              if (_endDatePaString == null ||
+                                  _endDatePaString!.isEmpty) {
+                                return 'Please select end date';
+                              }
+                              return null;
+                            },
+                          ),
                         ],
                       ),
                     ),
                   ),
 
-                  const SizedBox(height: 24),
-                  SizedBox(
-                    width: double.infinity, // Make button fill width
+                  const SizedBox(height: 20),
+                  Center(
                     child: ElevatedButton.icon(
-                      onPressed: _calculatePremium,
-                      icon: const Icon(Icons.calculate),
-                      label: const Text("CALCULATE"),
+                      onPressed: _isLoading ? null : _submitPa,
+                      icon: _isLoading
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : const Icon(Icons.send, color: Colors.white),
+                      label: Text(
+                        _isLoading ? 'Submitting...' : 'Submit Policy',
+                        style: const TextStyle(color: Colors.white),
+                      ),
                       style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        backgroundColor: Colors.blue,
-                        foregroundColor: Colors.white,
+                        backgroundColor: Colors.blueAccent,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 30, vertical: 15),
+                        textStyle: const TextStyle(fontSize: 18),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        textStyle: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
+                          borderRadius: BorderRadius.circular(10),
                         ),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
+                  const SizedBox(height: 10),
+                  Center(
                     child: ElevatedButton.icon(
-                      onPressed: _submitPa,
-                      icon: const Icon(Icons.send),
-                      label: const Text("SUBMIT"),
+                      onPressed: _isLoading ? null : _clearFormFields,
+                      icon: const Icon(Icons.clear, color: Colors.blueAccent),
+                      label: const Text(
+                        'Clear Form',
+                        style: TextStyle(color: Colors.blueAccent),
+                      ),
                       style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        backgroundColor: Colors.green,
-                        foregroundColor: Colors.white,
+                        backgroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 30, vertical: 15),
+                        textStyle: const TextStyle(fontSize: 18),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        textStyle: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
+                          borderRadius: BorderRadius.circular(10),
+                          side: const BorderSide(color: Colors.blueAccent),
                         ),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  // Conditionally show the PDF download button
-                  if (_pdfFilePath != null)
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed:
-                            _openPdf, // Calls the function to open the PDF
-                        icon: const Icon(Icons.picture_as_pdf),
-                        label: const Text("VIEW PDF"),
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          backgroundColor: Colors.orange,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          textStyle: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-                  const SizedBox(height: 24), // Add some bottom padding
+                  const SizedBox(height: 20),
                 ],
               ),
             ),
           ),
-          // Loading Indicator
-          if (_isLoading)
+          if (_isLoading) // Overlay for loading indicator
             Container(
               color: Colors.black.withOpacity(0.5),
-              child: const Center(
-                child: CircularProgressIndicator(color: Colors.blueAccent),
+              alignment: Alignment.center,
+              child: const CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
               ),
             ),
         ],
-      ),
-    );
-  }
-
-  // --- Reusable Widget Builders for Cleaner Code ---
-
-  Widget _buildTextField(
-    TextEditingController controller,
-    String labelText, {
-    TextInputType keyboardType = TextInputType.text,
-    bool isRequired = false,
-    String? Function(String?)? validator,
-    ValueChanged<String>? onChanged,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: TextFormField(
-        controller: controller,
-        keyboardType: keyboardType,
-        decoration: InputDecoration(
-          labelText: labelText,
-          border: const OutlineInputBorder(
-            borderRadius: BorderRadius.all(Radius.circular(8.0)),
-          ),
-          focusedBorder: const OutlineInputBorder(
-            borderRadius: BorderRadius.all(Radius.circular(8.0)),
-            borderSide: BorderSide(color: Colors.blueAccent, width: 2.0),
-          ),
-          enabledBorder: const OutlineInputBorder(
-            borderRadius: BorderRadius.all(Radius.circular(8.0)),
-            borderSide: BorderSide(color: Colors.grey, width: 1.0),
-          ),
-          floatingLabelBehavior: FloatingLabelBehavior.auto,
-          filled: true,
-          fillColor: Colors.white,
-          contentPadding: const EdgeInsets.symmetric(
-            vertical: 14.0,
-            horizontal: 12.0,
-          ),
-        ),
-        validator: isRequired
-            ? (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Please enter $labelText';
-                }
-                return validator?.call(
-                  value,
-                ); // Call additional validator if provided
-              }
-            : validator,
-        onChanged: onChanged,
-      ),
-    );
-  }
-
-  Widget _buildReadOnlyTextField(
-    TextEditingController controller,
-    String labelText,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: TextField(
-        controller: controller,
-        readOnly: true,
-        decoration: InputDecoration(
-          labelText: labelText,
-          border: const OutlineInputBorder(
-            borderRadius: BorderRadius.all(Radius.circular(8.0)),
-          ),
-          filled: true,
-          fillColor:
-              Colors.grey[100], // Light gray background for read-only fields
-          contentPadding: const EdgeInsets.symmetric(
-            vertical: 14.0,
-            horizontal: 12.0,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDropdownField<T>(
-    String labelText,
-    T? selectedValue,
-    List<T> items,
-    ValueChanged<T?> onChanged,
-    String? Function(T?)? validator,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: DropdownButtonFormField<T>(
-        decoration: InputDecoration(
-          labelText: labelText,
-          border: const OutlineInputBorder(
-            borderRadius: BorderRadius.all(Radius.circular(8.0)),
-          ),
-          focusedBorder: const OutlineInputBorder(
-            borderRadius: BorderRadius.all(Radius.circular(8.0)),
-            borderSide: BorderSide(color: Colors.blueAccent, width: 2.0),
-          ),
-          enabledBorder: const OutlineInputBorder(
-            borderRadius: BorderRadius.all(Radius.circular(8.0)),
-            borderSide: BorderSide(color: Colors.grey, width: 1.0),
-          ),
-          filled: true,
-          fillColor: Colors.white,
-          contentPadding: const EdgeInsets.symmetric(
-            vertical: 14.0,
-            horizontal: 12.0,
-          ),
-        ),
-        value: selectedValue,
-        items: items.map((item) {
-          return DropdownMenuItem<T>(
-            value: item,
-            child: Text((item as Model).name), // Assuming items are Model type
-          );
-        }).toList(),
-        onChanged: onChanged,
-        validator: validator,
-      ),
-    );
-  }
-
-  Widget _buildDateField(
-    String labelText,
-    String? dateString,
-    VoidCallback onTap, {
-    bool isRequired = false,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: TextFormField(
-        readOnly: true,
-        controller: TextEditingController(text: dateString),
-        decoration: InputDecoration(
-          labelText: labelText,
-          border: const OutlineInputBorder(
-            borderRadius: BorderRadius.all(Radius.circular(8.0)),
-          ),
-          focusedBorder: const OutlineInputBorder(
-            borderRadius: BorderRadius.all(Radius.circular(8.0)),
-            borderSide: BorderSide(color: Colors.blueAccent, width: 2.0),
-          ),
-          enabledBorder: const OutlineInputBorder(
-            borderRadius: BorderRadius.all(Radius.circular(8.0)),
-            borderSide: BorderSide(color: Colors.grey, width: 1.0),
-          ),
-          suffixIcon: const Icon(Icons.calendar_today),
-          filled: true,
-          fillColor: Colors.white,
-          contentPadding: const EdgeInsets.symmetric(
-            vertical: 14.0,
-            horizontal: 12.0,
-          ),
-        ),
-        onTap: onTap,
-        validator: isRequired
-            ? (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Please select $labelText';
-                }
-                return null;
-              }
-            : null,
       ),
     );
   }
