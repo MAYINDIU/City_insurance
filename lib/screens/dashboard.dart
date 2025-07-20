@@ -1,5 +1,6 @@
 import 'package:cityinsurance/screens/about_us_page.dart';
 import 'package:cityinsurance/screens/contact_us_page.dart';
+import 'package:cityinsurance/screens/fire.dart';
 import 'package:cityinsurance/screens/personal_accident.dart';
 import 'package:flutter/material.dart';
 import 'package:cityinsurance/screens/webview_page.dart';
@@ -185,6 +186,15 @@ class DashboardPage extends StatelessWidget {
                           context,
                           "FIRE PROPOSAL",
                           "assets/icons/fire.jpg",
+                            onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) =>
+                                        FireInsuranceFormScreen(),
+                                  ),
+                                );
+                              }
                         ),
                         _buildCard(
                           context,
@@ -194,7 +204,7 @@ class DashboardPage extends StatelessWidget {
                       ],
                     ),
 
-                    const SizedBox(height: 0),
+                    const SizedBox(height: 5),
 
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.center,

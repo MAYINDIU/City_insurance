@@ -852,9 +852,11 @@ class _PersonalAccidentPageState extends State<PersonalAccidentPage> {
                               if (value == null || value.isEmpty) {
                                 return 'Please enter Sum Insured';
                               }
-                              if (double.tryParse(value) == null ||
-                                  double.tryParse(value)! <= 0) {
-                                return 'Enter a valid positive amount';
+                              if (double.tryParse(value) == null) {
+                                return 'Please enter a valid number';
+                              }
+                              if (double.parse(value) <= 0) {
+                                return 'Sum Insured must be greater than 0';
                               }
                               return null;
                             },
@@ -862,127 +864,151 @@ class _PersonalAccidentPageState extends State<PersonalAccidentPage> {
                           _buildTextField(
                             _ratePaController,
                             "Rate",
-                            readOnly: true,
+                            readOnly: true, // Rate is calculated, not entered
                             keyboardType: TextInputType.number,
                           ),
                           _buildTextField(
                             _premiumPaController,
                             "Premium",
-                            readOnly: true,
+                            readOnly: true, // Premium is calculated
                             keyboardType: TextInputType.number,
                           ),
                           _buildTextField(
                             _vatPaController,
                             "VAT",
-                            readOnly: true,
+                            readOnly: true, // VAT is calculated
                             keyboardType: TextInputType.number,
                           ),
                           _buildTextField(
                             _stampPaController,
                             "Stamp",
-                            readOnly: true,
+                            readOnly: true, // Stamp is calculated
                             keyboardType: TextInputType.number,
                           ),
                           _buildTextField(
                             _totalPaController,
-                            "Total Payable",
-                            readOnly: true,
+                            "Grand Total",
+                            readOnly: true, // Grand Total is calculated
                             keyboardType: TextInputType.number,
                           ),
-                          _buildTextField(
-                            TextEditingController(text: _startDatePaString),
-                            "Period From",
-                            readOnly: true,
-                            isRequired: true,
-                            onTap: () => _selectDate(context, true),
-                            validator: (value) {
-                              if (_startDatePaString == null ||
-                                  _startDatePaString!.isEmpty) {
-                                return 'Please select start date';
-                              }
-                              return null;
-                            },
-                          ),
-                          _buildTextField(
-                            TextEditingController(text: _endDatePaString),
-                            "Period To",
-                            readOnly: true,
-                            isRequired: true,
-                            onTap: () => _selectDate(context, false),
-                            validator: (value) {
-                              if (_endDatePaString == null ||
-                                  _endDatePaString!.isEmpty) {
-                                return 'Please select end date';
-                              }
-                              return null;
-                            },
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildTextField(
+                                  TextEditingController(text: _startDatePaString),
+                                  "Period From",
+                                  readOnly: true,
+                                  onTap: () => _selectDate(context, true),
+                                  isRequired: true,
+                                  validator: (value) {
+                                    if (_startDatePaString == null ||
+                                        _startDatePaString!.isEmpty) {
+                                      return 'Please select a start date';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: 16.0),
+                              Expanded(
+                                child: _buildTextField(
+                                  TextEditingController(text: _endDatePaString),
+                                  "Period To",
+                                  readOnly: true,
+                                  onTap: () => _selectDate(context, false),
+                                  isRequired: true,
+                                  validator: (value) {
+                                    if (_endDatePaString == null ||
+                                        _endDatePaString!.isEmpty) {
+                                      return 'Please select an end date';
+                                    }
+                                    if (_startDate != null &&
+                                        _endDate != null &&
+                                        _endDate!.isBefore(_startDate!)) {
+                                      return 'End date must be after start date';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
                     ),
                   ),
-
                   const SizedBox(height: 20),
-                  Center(
-                    child: ElevatedButton.icon(
-                      onPressed: _isLoading ? null : _submitPa,
-                      icon: _isLoading
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                color: Colors.white,
-                                strokeWidth: 2,
+
+                  // --- Submit and Clear Buttons (Two columns) ---
+                  Row(
+                    children: [
+                      Expanded(
+                        child: SizedBox(
+                          height: 50, // Fixed height for the button
+                          child: ElevatedButton.icon(
+                            onPressed: _isLoading ? null : _submitPa,
+                            icon: const Icon(Icons.send, color: Colors.white),
+                            label: const Text(
+                              "Submit Policy",
+                              style: TextStyle(color: Colors.white, fontSize: 16),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
                               ),
-                            )
-                          : const Icon(Icons.send, color: Colors.white),
-                      label: Text(
-                        _isLoading ? 'Submitting...' : 'Submit Policy',
-                        style: const TextStyle(color: Colors.white),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blueAccent,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 30, vertical: 15),
-                        textStyle: const TextStyle(fontSize: 18),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
+                              elevation: 5,
+                            ),
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Center(
-                    child: ElevatedButton.icon(
-                      onPressed: _isLoading ? null : _clearFormFields,
-                      icon: const Icon(Icons.clear, color: Colors.blueAccent),
-                      label: const Text(
-                        'Clear Form',
-                        style: TextStyle(color: Colors.blueAccent),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 30, vertical: 15),
-                        textStyle: const TextStyle(fontSize: 18),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          side: const BorderSide(color: Colors.blueAccent),
+                      const SizedBox(width: 16), // Space between buttons
+                      Expanded(
+                        child: SizedBox(
+                          height: 50, // Fixed height for the button
+                          child: ElevatedButton.icon(
+                            onPressed: _isLoading ? null : _clearFormFields,
+                            icon: const Icon(Icons.refresh, color: Colors.white),
+                            label: const Text(
+                              "Clear Form",
+                              style: TextStyle(color: Colors.white, fontSize: 16),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.orange,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              elevation: 5,
+                            ),
+                          ),
                         ),
                       ),
-                    ),
+                    ],
                   ),
+
                   const SizedBox(height: 20),
                 ],
               ),
             ),
           ),
-          if (_isLoading) // Overlay for loading indicator
+          // Loading Indicator Overlay
+          if (_isLoading)
             Container(
               color: Colors.black.withOpacity(0.5),
-              alignment: Alignment.center,
-              child: const CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              child: const Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                    SizedBox(height: 10),
+                    Text(
+                      "Processing...",
+                      style: TextStyle(color: Colors.white, fontSize: 16),
+                    ),
+                  ],
+                ),
               ),
             ),
         ],
